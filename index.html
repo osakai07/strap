@@ -88,6 +88,9 @@
     <button id="btnSave" class="sec">Save CSV</button>
   </div>
   <p style="margin:12px 0 0;display:flex;align-items:center;gap:10px">
+    <input id="scanAll" type="checkbox" style="width:auto"><label for="scanAll">Show all Bluetooth devices (if WHOOP isn't listed)</label>
+  </p>
+  <p style="margin:12px 0 0;display:flex;align-items:center;gap:10px">
     <label for="age">Age (for HR zones)</label><input id="age" type="number" inputmode="numeric" min="10" max="90" value="19">
   </p>
 </div>
@@ -149,12 +152,26 @@ async function sendCmd(cmd,data,name){
 /* ---------- connect ---------- */
 async function connect(){
   if(!navigator.bluetooth){$('unsupported').style.display='block';return;}
+  const opt=['heart_rate','battery_service',WHOOP_SVC];
+  const errTxt=e=>e?`${e.name||'Error'}: ${e.message||String(e)}`:'unknown error';
+  device=null;
   try{
-    device = await navigator.bluetooth.requestDevice({
-      filters:[{namePrefix:'WHOOP'},{namePrefix:'Whoop'},{services:[WHOOP_SVC]}],
-      optionalServices:[0x180D,0x180F,WHOOP_SVC]
-    });
-  }catch(e){log('Picker closed: '+e.message);return;}
+    if($('scanAll').checked) throw {name:'Skip',message:'scan-all mode'};
+    device = await navigator.bluetooth.requestDevice({filters:[{namePrefix:'WHOOP'},{namePrefix:'Whoop'}], optionalServices:opt});
+  }catch(e){
+    log('Filtered scan: '+errTxt(e));
+    if(e && e.name==='NotFoundError' && !$('scanAll').checked && /cancel/i.test(e.message||'')) return;
+    try{
+      log('Trying scan of all nearby devices…');
+      device = await navigator.bluetooth.requestDevice({acceptAllDevices:true, optionalServices:opt});
+    }catch(e2){
+      log('All-devices scan: '+errTxt(e2));
+      log('Check iPhone Settings → Bluefy → Bluetooth is ON, and Settings → Bluetooth is ON.');
+      return;
+    }
+  }
+  if(!device) return;
+  log('Picked: '+(device.name||device.id));
   store('lastName',device.name||'');
   device.addEventListener('gattserverdisconnected',onDisconnect);
   wantConnected=true;
@@ -292,7 +309,12 @@ $('btnReset').onclick=()=>{ samples=[]; rrAll=[]; zoneSecs=[0,0,0,0,0]; sessionS
   ['sMin','sAvg','sMax','sHrv'].forEach(i=>$(i).textContent='--'); $('sTime').textContent='0:00'; drawChart(); drawZones(); };
 
 /* ---------- wiring ---------- */
-$('btnConnect').onclick=()=> (device&&device.gatt.connected)?disconnect():connect();
+let busy=false;
+$('btnConnect').onclick=async()=>{
+  if(device&&device.gatt.connected){disconnect();return;}
+  if(busy) return; busy=true; $('btnConnect').disabled=true;
+  try{ await connect(); } finally { busy=false; $('btnConnect').disabled=false; }
+};
 $('btnWake').onclick=startStream;
 $('age').value=load('age')||$('age').value;
 $('age').oninput=()=>store('age',$('age').value);
