@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b0d10">
+<title>Strap — WHOOP 5.0 live</title>
+<style>
+  :root{--bg:#0b0d10;--card:#14181d;--line:#232a32;--txt:#e9eef3;--dim:#8a96a3;--acc:#22d38a;--warn:#ffb020;--bad:#ff5a5f;--z1:#5aa9ff;--z2:#22d38a;--z3:#ffd23f;--z4:#ff8c32;--z5:#ff3b5c}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+       padding:calc(env(safe-area-inset-top) + 14px) 14px calc(env(safe-area-inset-bottom) + 24px)}
+  h1{font-size:20px;margin:0}
+  .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .pill{font-size:12px;padding:4px 10px;border-radius:99px;background:var(--card);border:1px solid var(--line);color:var(--dim)}
+  .pill.on{color:var(--acc);border-color:#1d5a3f}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:12px}
+  .hero{text-align:center;padding:22px 16px}
+  .bpm{font-size:84px;font-weight:700;letter-spacing:-3px;line-height:1;font-variant-numeric:tabular-nums}
+  .bpm small{font-size:18px;font-weight:500;color:var(--dim);letter-spacing:0;margin-left:4px}
+  .zone{display:inline-block;margin-top:10px;font-size:13px;font-weight:600;padding:4px 12px;border-radius:99px;background:#1b2027}
+  .heart{display:inline-block;color:var(--bad);font-size:26px;vertical-align:middle;margin-right:6px}
+  .beat{animation:beat .35s ease-out}
+  @keyframes beat{0%{transform:scale(1.35)}100%{transform:scale(1)}}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .stat{background:#0f1317;border-radius:12px;padding:10px;text-align:center}
+  .stat b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
+  .stat span{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+  canvas{width:100%;height:140px;display:block}
+  .bars{display:flex;height:10px;border-radius:6px;overflow:hidden;margin-top:10px;background:#0f1317}
+  .bars div{height:100%}
+  .legend{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-top:6px}
+  button{font:inherit;font-weight:600;border:0;border-radius:14px;padding:14px;width:100%;background:var(--acc);color:#04130c}
+  button.sec{background:#1b2027;color:var(--txt);border:1px solid var(--line)}
+  button:disabled{opacity:.4}
+  .row{display:flex;gap:8px;margin-top:8px}
+  .row button{flex:1}
+  label{font-size:13px;color:var(--dim)}
+  input{font:inherit;background:#0f1317;color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:8px 10px;width:80px}
+  .note{font-size:13px;color:var(--dim)}
+  .warn{color:var(--warn)}
+  #log{font:11px/1.45 ui-monospace,Menlo,monospace;color:var(--dim);max-height:220px;overflow:auto;white-space:pre-wrap;word-break:break-all;margin:8px 0 0}
+  details summary{cursor:pointer;color:var(--dim);font-size:13px}
+  #unsupported{display:none}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>Strap</h1>
+  <span id="status" class="pill">Disconnected</span>
+</div>
+
+<div id="unsupported" class="card warn">
+  This browser can't use Bluetooth. On iPhone, open this page in the free <b>Bluefy</b> browser from the App Store (Safari and Chrome on iOS don't support Web Bluetooth).
+</div>
+
+<div class="card hero">
+  <div><span id="heart" class="heart">♥</span><span id="bpm" class="bpm">--<small>bpm</small></span></div>
+  <div id="zone" class="zone" style="color:var(--dim)">Not connected</div>
+</div>
+
+<div class="card">
+  <div class="grid">
+    <div class="stat"><b id="sMin">--</b><span>Min</span></div>
+    <div class="stat"><b id="sAvg">--</b><span>Avg</span></div>
+    <div class="stat"><b id="sMax">--</b><span>Max</span></div>
+    <div class="stat"><b id="sHrv">--</b><span>HRV ms</span></div>
+    <div class="stat"><b id="sBat">--</b><span>Battery</span></div>
+    <div class="stat"><b id="sTime">0:00</b><span>Session</span></div>
+  </div>
+</div>
+
+<div class="card">
+  <canvas id="chart"></canvas>
+  <div class="bars" id="zoneBars"></div>
+  <div class="legend"><span>Z1</span><span>Z2</span><span>Z3</span><span>Z4</span><span>Z5</span></div>
+</div>
+
+<div class="card">
+  <button id="btnConnect">Connect WHOOP</button>
+  <div class="row">
+    <button id="btnWake" class="sec" disabled>Start HR stream</button>
+    <button id="btnReset" class="sec">Reset session</button>
+  </div>
+  <div class="row">
+    <button id="btnCopy" class="sec">Copy CSV</button>
+    <button id="btnSave" class="sec">Save CSV</button>
+  </div>
+  <p style="margin:12px 0 0;display:flex;align-items:center;gap:10px">
+    <label for="age">Age (for HR zones)</label><input id="age" type="number" inputmode="numeric" min="10" max="90" value="19">
+  </p>
+</div>
+
+<div class="card">
+  <details>
+    <summary>How to connect / debug log</summary>
+    <ol class="note" style="padding-left:18px">
+      <li>Open this page in <b>Bluefy</b> on your iPhone.</li>
+      <li>Close the official WHOOP app (swipe it away) so it doesn't hold the connection.</li>
+      <li>Tap <b>Connect WHOOP</b>, pick your strap. If iOS asks to pair, accept.</li>
+      <li>If no heart rate shows after ~5 s, tap <b>Start HR stream</b>.</li>
+      <li>Keep the page open; iOS stops Bluetooth when the browser goes to the background.</li>
+    </ol>
+    <div id="log"></div>
+  </details>
+</div>
+
+<script>
+const WHOOP_SVC  = 'fd4b0001-cce1-4033-93ce-002d5875f58a';
+const WHOOP_CMD  = 'fd4b0002-cce1-4033-93ce-002d5875f58a';
+const WHOOP_RESP = 'fd4b0003-cce1-4033-93ce-002d5875f58a';
+const $ = id => document.getElementById(id);
+const ZC = ['var(--z1)','var(--z2)','var(--z3)','var(--z4)','var(--z5)'];
+
+let device=null, server=null, cmdChar=null, seq=180, lastHrAt=0, wantConnected=false;
+let samples=[];          // {t, bpm, rr:[ms]}
+let rrAll=[];            // recent RR intervals (ms)
+let zoneSecs=[0,0,0,0,0];
+let sessionStart=null;
+
+/* ---------- utils ---------- */
+function log(m){const el=$('log');const t=new Date().toLocaleTimeString();el.textContent=`${t}  ${m}\n`+el.textContent.slice(0,6000);}
+function setStatus(txt,on){$('status').textContent=txt;$('status').classList.toggle('on',!!on);}
+const hex=a=>Array.from(a,x=>x.toString(16).padStart(2,'0')).join('');
+function store(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+function load(k){try{return localStorage.getItem(k)}catch(e){return null}}
+
+/* ---------- WHOOP 5.0 command framing (verified against Goose reference frames) ---------- */
+function crc16(b){let c=0xffff;for(const x of b){c^=x;for(let i=0;i<8;i++)c=(c&1)?(c>>>1)^0xa001:c>>>1;}return c;}
+function crc32(b){let c=0xffffffff;for(const x of b){c^=x;for(let i=0;i<8;i++)c=(c&1)?(c>>>1)^0xedb88320:c>>>1;}return (~c)>>>0;}
+function frame(s,cmd,data){
+  const p=[35,s,cmd,...data]; while(p.length%4)p.push(0);
+  const L=p.length+4, h=[0xaa,1,L&255,L>>8,0,1], hc=crc16(h), pc=crc32(p);
+  return new Uint8Array([...h,hc&255,hc>>8,...p,pc&255,(pc>>>8)&255,(pc>>>16)&255,pc>>>24]);
+}
+async function sendCmd(cmd,data,name){
+  if(!cmdChar){log('No command channel');return;}
+  const s=seq; seq=seq>=255?180:seq+1;
+  const f=frame(s,cmd,data);
+  try{
+    if(cmdChar.properties.write && cmdChar.writeValueWithResponse) await cmdChar.writeValueWithResponse(f);
+    else if(cmdChar.writeValueWithoutResponse) await cmdChar.writeValueWithoutResponse(f);
+    else await cmdChar.writeValue(f);
+    log(`→ ${name} (cmd ${cmd}) ${hex(f)}`);
+  }catch(e){log(`✗ ${name}: ${e.message}`);}
+}
+
+/* ---------- connect ---------- */
+async function connect(){
+  if(!navigator.bluetooth){$('unsupported').style.display='block';return;}
+  try{
+    device = await navigator.bluetooth.requestDevice({
+      filters:[{namePrefix:'WHOOP'},{namePrefix:'Whoop'},{services:[WHOOP_SVC]}],
+      optionalServices:[0x180D,0x180F,WHOOP_SVC]
+    });
+  }catch(e){log('Picker closed: '+e.message);return;}
+  store('lastName',device.name||'');
+  device.addEventListener('gattserverdisconnected',onDisconnect);
+  wantConnected=true;
+  await openGatt();
+}
+
+async function openGatt(){
+  setStatus('Connecting…');
+  try{ server = await device.gatt.connect(); }
+  catch(e){ setStatus('Failed'); log('Connect failed: '+e.message); return; }
+  setStatus(device.name||'Connected',true);
+  $('btnConnect').textContent='Disconnect';
+  log('Connected to '+(device.name||'device'));
+  if(!sessionStart) sessionStart=Date.now();
+
+  // Battery
+  try{
+    const b=await (await server.getPrimaryService(0x180F)).getCharacteristic(0x2A19);
+    const v=await b.readValue(); $('sBat').textContent=v.getUint8(0)+'%';
+    try{await b.startNotifications(); b.addEventListener('characteristicvaluechanged',e=>$('sBat').textContent=e.target.value.getUint8(0)+'%');}catch(_){}
+  }catch(e){log('Battery: '+e.message);}
+
+  // WHOOP command channel (needs the iOS pairing to be accepted)
+  try{
+    const svc=await server.getPrimaryService(WHOOP_SVC);
+    cmdChar=await svc.getCharacteristic(WHOOP_CMD);
+    $('btnWake').disabled=false;
+    try{
+      const r=await svc.getCharacteristic(WHOOP_RESP);
+      await r.startNotifications();
+      r.addEventListener('characteristicvaluechanged',e=>log('← '+hex(new Uint8Array(e.target.value.buffer))));
+    }catch(e){log('Responses: '+e.message+' (pairing may not be complete)');}
+  }catch(e){log('WHOOP service: '+e.message);}
+
+  // Standard heart-rate service
+  const ok = await subscribeHR();
+  setTimeout(()=>{ if(Date.now()-lastHrAt>5000 && wantConnected){ log('No HR yet, starting stream'); startStream(); } }, ok?5000:500);
+}
+
+async function subscribeHR(){
+  try{
+    const c=await (await server.getPrimaryService(0x180D)).getCharacteristic(0x2A37);
+    await c.startNotifications();
+    c.addEventListener('characteristicvaluechanged',onHR);
+    log('Subscribed to heart rate');
+    return true;
+  }catch(e){log('HR service: '+e.message);return false;}
+}
+
+async function startStream(){
+  await sendCmd(14,[1],'GENERIC_HR_PROFILE_ON');
+  await new Promise(r=>setTimeout(r,250));
+  await sendCmd(3,[1],'REALTIME_HR_ON');
+  await new Promise(r=>setTimeout(r,800));
+  if(Date.now()-lastHrAt>3000){ await subscribeHR(); }
+  setTimeout(()=>{ if(Date.now()-lastHrAt>6000 && wantConnected) log('Still no HR. Try Disconnect → Connect (iOS may need to re-read the strap’s services).'); },6000);
+}
+
+function onDisconnect(){
+  setStatus('Disconnected'); $('btnConnect').textContent='Connect WHOOP'; $('btnWake').disabled=true; cmdChar=null;
+  log('Disconnected');
+  if(wantConnected){ setTimeout(()=>{ if(wantConnected && device){ log('Reconnecting…'); openGatt(); } },1500); }
+}
+
+function disconnect(){ wantConnected=false; if(device&&device.gatt.connected) device.gatt.disconnect(); }
+
+/* ---------- heart rate ---------- */
+function onHR(e){
+  const v=e.target.value, flags=v.getUint8(0); let o=1, bpm;
+  if(flags&1){bpm=v.getUint16(o,true);o+=2;}else{bpm=v.getUint8(o);o+=1;}
+  if(flags&8) o+=2;
+  const rr=[];
+  if(flags&16){ while(o+1<v.byteLength){ rr.push(v.getUint16(o,true)*1000/1024); o+=2; } }
+  if(!bpm) return;
+  const now=Date.now();
+  // zone time
+  if(lastHrAt && now-lastHrAt<5000){ zoneSecs[zoneOf(bpm)]+= (now-lastHrAt)/1000; }
+  lastHrAt=now;
+  samples.push({t:now,bpm,rr});
+  if(samples.length>20000) samples.shift();
+  rr.forEach(x=>{ if(x>300&&x<2000) rrAll.push(x); });
+  if(rrAll.length>300) rrAll=rrAll.slice(-300);
+  render(bpm);
+}
+
+function maxHR(){ const a=parseInt($('age').value)||25; return 220-a; }
+function zoneOf(b){ const p=b/maxHR(); return p<.6?0:p<.7?1:p<.8?2:p<.9?3:4; }
+const ZN=['Z1 · Easy','Z2 · Fat burn','Z3 · Aerobic','Z4 · Threshold','Z5 · Max'];
+
+function rmssd(){
+  const r=rrAll.slice(-60); if(r.length<5) return null;
+  let s=0,n=0; for(let i=1;i<r.length;i++){ const d=r[i]-r[i-1]; if(Math.abs(d)<250){s+=d*d;n++;} }
+  return n?Math.sqrt(s/n):null;
+}
+
+function render(bpm){
+  $('bpm').innerHTML=`${bpm}<small>bpm</small>`;
+  const z=zoneOf(bpm); $('zone').textContent=ZN[z]+` · ${Math.round(bpm/maxHR()*100)}%`; $('zone').style.color=ZC[z];
+  const h=$('heart'); h.classList.remove('beat'); void h.offsetWidth; h.classList.add('beat');
+  const b=samples.map(s=>s.bpm);
+  $('sMin').textContent=Math.min(...b); $('sMax').textContent=Math.max(...b);
+  $('sAvg').textContent=Math.round(b.reduce((a,c)=>a+c,0)/b.length);
+  const hv=rmssd(); $('sHrv').textContent=hv?Math.round(hv):'--';
+  drawChart(); drawZones();
+}
+
+function drawChart(){
+  const c=$('chart'), dpr=window.devicePixelRatio||1, w=c.clientWidth, h=c.clientHeight;
+  c.width=w*dpr; c.height=h*dpr; const g=c.getContext('2d'); g.scale(dpr,dpr); g.clearRect(0,0,w,h);
+  const pts=samples.filter(s=>s.t>Date.now()-5*60*1000); if(pts.length<2) return;
+  let lo=Math.min(...pts.map(p=>p.bpm))-5, hi=Math.max(...pts.map(p=>p.bpm))+5;
+  const t0=pts[0].t, t1=pts[pts.length-1].t||t0+1;
+  g.strokeStyle='#232a32'; g.lineWidth=1; g.fillStyle='#8a96a3'; g.font='10px -apple-system,sans-serif';
+  [lo,(lo+hi)/2,hi].forEach(v=>{const y=h-(v-lo)/(hi-lo)*h; g.beginPath(); g.moveTo(0,y); g.lineTo(w,y); g.stroke(); g.fillText(Math.round(v),2,Math.min(h-2,Math.max(10,y-2)));});
+  const grad=g.createLinearGradient(0,0,0,h); grad.addColorStop(0,'#ff3b5c'); grad.addColorStop(1,'#22d38a');
+  g.strokeStyle=grad; g.lineWidth=2.5; g.lineJoin='round'; g.beginPath();
+  pts.forEach((p,i)=>{const x=(p.t-t0)/Math.max(1,t1-t0)*w, y=h-(p.bpm-lo)/(hi-lo)*h; i?g.lineTo(x,y):g.moveTo(x,y);});
+  g.stroke();
+}
+
+function drawZones(){
+  const tot=zoneSecs.reduce((a,b)=>a+b,0)||1;
+  $('zoneBars').innerHTML=zoneSecs.map((s,i)=>`<div style="width:${s/tot*100}%;background:${ZC[i]}"></div>`).join('');
+}
+
+setInterval(()=>{ if(!sessionStart) return; const s=Math.floor((Date.now()-sessionStart)/1000);
+  $('sTime').textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); },1000);
+
+/* ---------- export ---------- */
+function csv(){ return 'timestamp,bpm,rr_ms\n'+samples.map(s=>`${new Date(s.t).toISOString()},${s.bpm},${s.rr.map(x=>x.toFixed(0)).join(' ')}`).join('\n'); }
+$('btnCopy').onclick=async()=>{ try{ await navigator.clipboard.writeText(csv()); log(`Copied ${samples.length} rows`);}catch(e){log('Copy failed: '+e.message);} };
+$('btnSave').onclick=()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv()],{type:'text/csv'}));
+  a.download=`whoop-${new Date().toISOString().slice(0,16).replace(':','')}.csv`; a.click(); };
+$('btnReset').onclick=()=>{ samples=[]; rrAll=[]; zoneSecs=[0,0,0,0,0]; sessionStart=device&&device.gatt.connected?Date.now():null;
+  ['sMin','sAvg','sMax','sHrv'].forEach(i=>$(i).textContent='--'); $('sTime').textContent='0:00'; drawChart(); drawZones(); };
+
+/* ---------- wiring ---------- */
+$('btnConnect').onclick=()=> (device&&device.gatt.connected)?disconnect():connect();
+$('btnWake').onclick=startStream;
+$('age').value=load('age')||$('age').value;
+$('age').oninput=()=>store('age',$('age').value);
+if(!navigator.bluetooth){ $('unsupported').style.display='block'; $('btnConnect').disabled=true; }
+else if(navigator.bluetooth.getAvailability){ navigator.bluetooth.getAvailability().then(ok=>{ if(!ok) log('Bluetooth looks off or unavailable'); }); }
+log('Ready. Tap Connect.');
+</script>
+</body>
+</html>
